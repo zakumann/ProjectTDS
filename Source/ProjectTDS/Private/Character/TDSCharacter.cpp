@@ -10,6 +10,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
 #include "InputAction.h"
+#include "Engine/LocalPlayer.h"
 
 // Sets default values
 ATDSCharacter::ATDSCharacter()
@@ -19,6 +20,7 @@ ATDSCharacter::ATDSCharacter()
 
 	SpringArmComp = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArmComp"));
 	SpringArmComp->SetupAttachment(RootComponent);
+	SpringArmComp->TargetArmLength = 1200.f;
 	SpringArmComp->SetRelativeRotation(FRotator(-60.f, 0.f, 0.f));
 	SpringArmComp->bDoCollisionTest = false;
 	SpringArmComp->bInheritPitch = false;
@@ -78,40 +80,63 @@ void ATDSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 void ATDSCharacter::Move(const FInputActionValue& Value)
 {
-	FVector2D MovementVector = Value.Get<FVector2D>();
+	if (!TopDownCameraComp) return;
 
-	if (Controller != nullptr)
-	{
-		const FVector ForwardDirection(1.0f, 0.0f, 0.0f);
-		const FVector RightDirection(0.0f, 1.0f, 0.0f);
+	const FVector2D MovementVector = Value.Get<FVector2D>();
+	if (MovementVector.IsNearlyZero())return;
 
-		AddMovementInput(ForwardDirection, MovementVector.Y);
-		AddMovementInput(RightDirection, MovementVector.X);
-	}
+	FVector Forward = TopDownCameraComp->GetForwardVector();
+	Forward.Z = 0.f;
+	Forward.Normalize();
+
+	FVector Right = TopDownCameraComp->GetRightVector();
+	Right.Z = 0.f;
+	Right.Normalize();
+
+	AddMovementInput(Forward, MovementVector.Y);
+	AddMovementInput(Right, MovementVector.X);
 }
 
 void ATDSCharacter::RotateToMouseCursor()
 {
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-	if (PlayerController)
+	if (!PlayerController)return;
+
+	FVector WorldLocation;
+	FVector WorldDirection;
+	if (!PlayerController->DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
 	{
-		FHitResult TraceHitResult;
-
-		if (PlayerController->GetHitResultUnderCursor(ECC_Visibility, false, TraceHitResult))
-		{
-			FVector MouseWorldLocation = TraceHitResult.ImpactPoint;
-
-			FVector TargetDirection = MouseWorldLocation - GetActorLocation();
-
-			TargetDirection.Z = 0.0f;
-
-			if (!TargetDirection.IsNearlyZero())
-			{
-				FRotator TargetRotation = TargetDirection.Rotation();
-
-				FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRotation, GetWorld()->GetDeltaSeconds(), 15.0f);
-				SetActorRotation(NewRotation);
-			}
-		}
+		return;
 	}
+
+	if (FMath::IsNearlyZero(WorldDirection.Z, KINDA_SMALL_NUMBER))
+	{
+		return;
+	}
+
+	const FVector ActorLocation = GetActorLocation();
+	const float Distance = (ActorLocation.Z - WorldLocation.Z) / WorldDirection.Z;
+	if (Distance < 0.f)
+	{
+		return;
+	}
+
+	const FVector IntersectionPoint = WorldLocation + WorldDirection * Distance;
+
+	FVector TargetDirection = IntersectionPoint - ActorLocation;
+	TargetDirection.Z = 0.f;
+
+	if (TargetDirection.IsNearlyZero())
+	{
+		return;
+	}
+
+	const FRotator TargetRotation = TargetDirection.Rotation();
+	const FRotator NewRotation = FMath::RInterpTo(
+		GetActorRotation(),
+		TargetRotation,
+		GetWorld()->GetDeltaSeconds(),
+		RotationInterpSpeed);
+
+	SetActorRotation(NewRotation);
 }

@@ -37,8 +37,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	TObjectPtr<UInputAction> MoveAction;
 
-	void Move(const FInputActionValue& Value);
+	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "0.1"))
+	float RotationInterpSpeed = 15.f;
 
+	void Move(const FInputActionValue& Value);
 	void RotateToMouseCursor();
 
 public:	
