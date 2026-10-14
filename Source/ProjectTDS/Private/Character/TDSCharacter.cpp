@@ -2,15 +2,13 @@
 
 
 #include "Character/TDSCharacter.h"
-
-#include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
-
+#include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
-#include "InputMappingContext.h"
-#include "InputAction.h"
-#include "Engine/LocalPlayer.h"
+#include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 // Sets default values
 ATDSCharacter::ATDSCharacter()
@@ -18,22 +16,27 @@ ATDSCharacter::ATDSCharacter()
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
-	SpringArmComp = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArmComp"));
+	SpringArmComp = CreateDefaultSubobject<USpringArmComponent>("SpringArmComp");
 	SpringArmComp->SetupAttachment(RootComponent);
 	SpringArmComp->TargetArmLength = 1200.f;
-	SpringArmComp->SetRelativeRotation(FRotator(-60.f, 0.f, 0.f));
+	SpringArmComp->SetRelativeRotation(FRotator(-50.f, -45.f, 0.f));
 	SpringArmComp->bDoCollisionTest = false;
 	SpringArmComp->bInheritPitch = false;
-	SpringArmComp->bInheritRoll = false;
 	SpringArmComp->bInheritYaw = false;
-
-	TopDownCameraComp = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCameraComp"));
+	SpringArmComp->bInheritRoll = false;
+	
+	TopDownCameraComp = CreateDefaultSubobject<UCameraComponent>("TopDownCameraComp");
 	TopDownCameraComp->SetupAttachment(SpringArmComp);
 	TopDownCameraComp->bUsePawnControlRotation = false;
 
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationRoll = false;
 	bUseControllerRotationYaw = false;
+	bUseControllerRotationRoll = false;
+
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->RotationRate = FRotator(0.f, 720.f, 0.f);
+	GetCharacterMovement()->bConstrainToPlane = true;
+	GetCharacterMovement()->bSnapToPlaneAtStart = true;
 }
 
 // Called when the game starts or when spawned
@@ -41,18 +44,6 @@ void ATDSCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			if (InputMappingContext.IsValid())
-			{
-				Subsystem->AddMappingContext(InputMappingContext.Get(), 0);
-			}
-		}
-
-		PlayerController->bShowMouseCursor = true;
-	}
 }
 
 // Called every frame
@@ -68,75 +59,77 @@ void ATDSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		if (MoveAction)
-		{
-			EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ATDSCharacter::Move);
-		}
+		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ATDSCharacter::Move);
 	}
 }
 
-
 void ATDSCharacter::Move(const FInputActionValue& Value)
 {
-	if (!TopDownCameraComp) return;
-
 	const FVector2D MovementVector = Value.Get<FVector2D>();
-	if (MovementVector.IsNearlyZero())return;
 
-	FVector Forward = TopDownCameraComp->GetForwardVector();
-	Forward.Z = 0.f;
-	Forward.Normalize();
+	if (Controller != nullptr)
+	{
+		/*const FRotator Rotation = Controller->GetControlRotation();
+		const FRotator YawRotation(0.f, Rotation.Yaw, 0.f);*/
 
-	FVector Right = TopDownCameraComp->GetRightVector();
-	Right.Z = 0.f;
-	Right.Normalize();
+		const FRotator IsometricRotation(0.f, -45.f, 0.f);
 
-	AddMovementInput(Forward, MovementVector.Y);
-	AddMovementInput(Right, MovementVector.X);
+		const FVector ForwardDirection = FRotationMatrix(IsometricRotation).GetUnitAxis(EAxis::X);
+		const FVector RightDirection = FRotationMatrix(IsometricRotation).GetUnitAxis(EAxis::Y);
+
+		AddMovementInput(ForwardDirection, MovementVector.Y);
+		AddMovementInput(RightDirection, MovementVector.X);
+	}
 }
 
 void ATDSCharacter::RotateToMouseCursor()
 {
-	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-	if (!PlayerController)return;
-
-	FVector WorldLocation;
-	FVector WorldDirection;
-	if (!PlayerController->DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
-		return;
+		FVector MouseWorldLocation = GetMouseCursorWorldLocation();
+		FVector CharacterLocation = GetActorLocation();
+
+		// Looking forward related with Z side.
+		MouseWorldLocation.Z = CharacterLocation.Z;
+
+		// Calcuate Looking direction
+		FRotator LookAtRotation = UKismetMathLibrary::FindLookAtRotation(CharacterLocation, MouseWorldLocation);
+
+		// Affect only Yaw
+		FRotator NewRotation = GetActorRotation();
+		NewRotation.Yaw = LookAtRotation.Yaw;
+
+		SetActorRotation(FMath::RInterpTo(GetActorRotation(), NewRotation, GetWorld()->GetDeltaSeconds(), 15.f));
 	}
-
-	if (FMath::IsNearlyZero(WorldDirection.Z, KINDA_SMALL_NUMBER))
-	{
-		return;
-	}
-
-	const FVector ActorLocation = GetActorLocation();
-	const float Distance = (ActorLocation.Z - WorldLocation.Z) / WorldDirection.Z;
-	if (Distance < 0.f)
-	{
-		return;
-	}
-
-	const FVector IntersectionPoint = WorldLocation + WorldDirection * Distance;
-
-	FVector TargetDirection = IntersectionPoint - ActorLocation;
-	TargetDirection.Z = 0.f;
-
-	if (TargetDirection.IsNearlyZero())
-	{
-		return;
-	}
-
-	const FRotator TargetRotation = TargetDirection.Rotation();
-	const FRotator NewRotation = FMath::RInterpTo(
-		GetActorRotation(),
-		TargetRotation,
-		GetWorld()->GetDeltaSeconds(),
-		RotationInterpSpeed);
-
-	SetActorRotation(NewRotation);
 }
+
+FVector ATDSCharacter::GetMouseCursorWorldLocation() const
+{
+	FVector WorldLocation, WorldDirection;
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (PC->DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
+		{
+			// Calculate PalneOrigin with Z=0 / height of character
+			FVector PlaneOrigin = GetActorLocation();
+			PlaneOrigin.Z = 0.f;
+
+			float T;
+			FVector Intersection;
+			if (UKismetMathLibrary::LinePlaneIntersection_OriginNormal(
+				WorldLocation,
+				WorldLocation + WorldDirection * 10000.f,
+				PlaneOrigin,
+				FVector::UpVector,
+				T,
+				Intersection))
+			{
+				return Intersection;
+			}
+		}
+	}
+	return GetActorLocation();
+}
+
