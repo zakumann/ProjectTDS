@@ -74,7 +74,8 @@ void ATDSCharacter::Move(const FInputActionValue& Value)
 		/*const FRotator Rotation = Controller->GetControlRotation();
 		const FRotator YawRotation(0.f, Rotation.Yaw, 0.f);*/
 
-		const FRotator IsometricRotation(0.f, -45.f, 0.f);
+		const float CameraYaw = SpringArmComp->GetRelativeRotation().Yaw;
+		const FRotator IsometricRotation(0.f, CameraYaw, 0.f);
 
 		const FVector ForwardDirection = FRotationMatrix(IsometricRotation).GetUnitAxis(EAxis::X);
 		const FVector RightDirection = FRotationMatrix(IsometricRotation).GetUnitAxis(EAxis::Y);
