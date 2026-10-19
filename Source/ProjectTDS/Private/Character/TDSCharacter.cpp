@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Weapon/TDSWeapon.h"
 
 // Sets default values
 ATDSCharacter::ATDSCharacter()
@@ -37,13 +38,35 @@ ATDSCharacter::ATDSCharacter()
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 720.f, 0.f);
 	GetCharacterMovement()->bConstrainToPlane = true;
 	GetCharacterMovement()->bSnapToPlaneAtStart = true;
+
+	Tags.AddUnique(FName("Player")); // Add "Player" Tag for not overdrived by names.
 }
 
 // Called when the game starts or when spawned
 void ATDSCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	for (TSubclassOf<ATDSWeapon> WeaponClass : StartingWeaponClasses)
+	{
+		if (!WeaponClass) continue;
+		
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.Instigator = this;
+
+		if (ATDSWeapon* NewWeapon = GetWorld()->SpawnActor<ATDSWeapon>(WeaponClass, GetActorTransform(), SpawnParams))
+		{
+			NewWeapon->Holster();
+			WeaponInventory.Add(NewWeapon);
+		}
+	}
+
+	// Attach Starting Weapon
+	if (WeaponInventory.Num() > 0)
+	{
+		SwitchWeapon(0);
+	}
 }
 
 // Called every frame
@@ -62,6 +85,13 @@ void ATDSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ATDSCharacter::Move);
+		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &ATDSCharacter::Interact);
+
+		// Interact
+		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &ATDSCharacter::Interact);
+		EnhancedInput->BindAction(SwitchWeapon1Action, ETriggerEvent::Started, this, &ATDSCharacter::SwitchToWeapon1);
+		EnhancedInput->BindAction(SwitchWeapon2Action, ETriggerEvent::Started, this, &ATDSCharacter::SwitchToWeapon2);
+		EnhancedInput->BindAction(DropWeaponAction, ETriggerEvent::Started, this, &ATDSCharacter::DropCurrentWeapon);
 	}
 }
 
@@ -134,3 +164,121 @@ FVector ATDSCharacter::GetMouseCursorWorldLocation() const
 	return GetActorLocation();
 }
 
+void ATDSCharacter::Shoot(const FInputActionValue& Value)
+{
+	if (CurrentWeapon && CurrentWeapon->IsEquipped())
+	{
+		CurrentWeapon->Fire();
+	}
+}
+
+void ATDSCharacter::DropCurrentWeapon(const FInputActionValue& Value)
+{
+	if (!CurrentWeapon || !WeaponInventory.IsValidIndex(CurrentWeaponIndex)) return;
+
+	ATDSWeapon* WeaponToDrop = CurrentWeapon;
+	const int32 RemovedIndex = CurrentWeaponIndex;
+
+	CurrentWeapon = nullptr;
+	CurrentWeaponIndex = INDEX_NONE;
+	WeaponInventory.RemoveAt(RemovedIndex);
+
+	WeaponToDrop->DropWeapon();
+
+	FVector DropLocation = GetActorLocation() + GetActorForwardVector() * 80.f;
+	DropLocation.Z = GetActorLocation().Z;
+	WeaponToDrop->SetActorLocation(DropLocation);
+	WeaponToDrop->SetActorRotation(FRotator(0.f, GetActorRotation().Yaw, 0.f));
+
+	if (WeaponInventory.Num() > 0)
+	{
+		SwitchWeapon(0);
+	}
+}
+
+void ATDSCharacter::Interact(const FInputActionValue& Value)
+{
+	if (!OverlappingWeapon || OverlappingWeapon->IsEquipped()) return;
+
+	ATDSWeapon* Picked = OverlappingWeapon;
+	OverlappingWeapon = nullptr;
+	AddWeaponToInventory(Picked);
+}
+
+void ATDSCharacter::SwitchToWeapon1(const FInputActionValue& Value)
+{
+	SwitchWeapon(0);
+}
+
+void ATDSCharacter::SwitchToWeapon2(const FInputActionValue & Value)
+{
+	SwitchWeapon(1);
+}
+
+
+
+void ATDSCharacter::AddWeaponToInventory(ATDSWeapon* NewWeapon)
+{
+	if (!NewWeapon || NewWeapon->IsEquipped()) return;
+
+	// if already class there, ignored it.
+	for (ATDSWeapon* Existing : WeaponInventory)
+	{
+		if (Existing && Existing->GetClass() == NewWeapon->GetClass())
+		{
+			NewWeapon->Destroy();
+			return;
+		}
+	}
+
+	NewWeapon->Holster();
+	WeaponInventory.Add(NewWeapon);
+
+	// if This weapon equip first, attach this.
+	SwitchWeapon(WeaponInventory.Num() - 1);
+}
+
+void ATDSCharacter::SwitchWeapon(int32 Index)
+{
+	if (!WeaponInventory.IsValidIndex(Index)) return;
+	if (Index == CurrentWeaponIndex && CurrentWeapon && CurrentWeapon->IsEquipped()) return;
+
+	// CurrentWeapon Hide / disarmed
+	UnequipCurrentWeapon();
+
+	CurrentWeaponIndex = Index;
+	CurrentWeapon = WeaponInventory[Index];
+
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->EquipWeapon(this);
+	}
+}
+
+void ATDSCharacter::UnequipCurrentWeapon()
+{
+	if (!CurrentWeapon) return;
+
+	// Detaching weapon
+	CurrentWeapon->Holster();
+	CurrentWeapon = nullptr;
+	CurrentWeaponIndex = INDEX_NONE;
+}
+
+
+
+void ATDSCharacter::SetOverlappingWeapon(ATDSWeapon* Weapon)
+{
+	if (Weapon && !Weapon->IsEquipped())
+	{
+		OverlappingWeapon = Weapon;
+	}
+}
+
+void ATDSCharacter::ClearOverlappingWeapon(ATDSWeapon* Weapon)
+{
+	if (OverlappingWeapon == Weapon)
+	{
+		OverlappingWeapon = nullptr;
+	}
+}

@@ -7,6 +7,8 @@
 #include "TDSWeapon.generated.h"
 
 class USkeletalMeshComponent;
+class ACharacter;
+class USphereComponent;
 
 UCLASS()
 class PROJECTTDS_API ATDSWeapon : public AActor
@@ -28,14 +30,70 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<USkeletalMeshComponent> WeaponMesh;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attachment")
-	FName MuzzleSocketName;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<USphereComponent> PickupCollision;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attachment")
-	FName CharacterGripSocketName;
+	FName MuzzleSocketName = TEXT("Muzzle_Socket");
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attachment")
+	FName CharacterGripSocketName = TEXT("Pistol_Grip_socket");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attachment")
+	FName LeftHandSocketName = TEXT("LeftHandSocket");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attachment")
+	bool bUseLeftHandIK = true;
+
+	// ====Combat State (BP_Pistol / BP_AR) ====
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Combat")
+	TSubclassOf<AActor> ProjectileClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Combat")
+	float Damage = 20.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Combat")
+	float FireRate = 5.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Combat")
+	float ProjectileSpeed = 3000.f;
+
+	// ==== Functions ====
+	/** Attach Weapon into Character's hand */
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void EquipWeapon(ACharacter* TargetCharacter);
 
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void Holster();
+
+	//** Drop the weapon */ 
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void DropWeapon();
+
+	/** Fire (if attached) */
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	virtual void Fire();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void SetPickupEnabled(bool bEnabled);
+
+	//** bIsEquipped */
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	bool IsEquipped() const { return bIsEquipped; }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	bool UsesLeftHandIK() const { return bUseLeftHandIK && bIsEquipped; }
+
+protected:
+	UFUNCTION()
+	void OnPickupBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnPickupEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	bool CanFire() const;
+
+	bool bIsEquipped = false;
+	float NextFireTime = 0.f;
+
 };
