@@ -183,12 +183,9 @@ void ATDSCharacter::DropCurrentWeapon(const FInputActionValue& Value)
 	CurrentWeaponIndex = INDEX_NONE;
 	WeaponInventory.RemoveAt(RemovedIndex);
 
-	WeaponToDrop->DropWeapon();
-
-	FVector DropLocation = GetActorLocation() + GetActorForwardVector() * 80.f;
-	DropLocation.Z = GetActorLocation().Z;
-	WeaponToDrop->SetActorLocation(DropLocation);
-	WeaponToDrop->SetActorRotation(FRotator(0.f, GetActorRotation().Yaw, 0.f));
+	const FVector DropLocation = GetActorLocation() + GetActorForwardVector() * 120.f;
+	const FRotator DropRotation(0.f, GetActorRotation().Yaw, 0.f);
+	WeaponToDrop->DropWeapon(DropLocation, DropRotation);
 
 	if (WeaponInventory.Num() > 0)
 	{
@@ -220,15 +217,25 @@ void ATDSCharacter::SwitchToWeapon2(const FInputActionValue & Value)
 void ATDSCharacter::AddWeaponToInventory(ATDSWeapon* NewWeapon)
 {
 	if (!NewWeapon || NewWeapon->IsEquipped()) return;
+	if (WeaponInventory.Contains(NewWeapon)) return;
 
-	// if already class there, ignored it.
-	for (ATDSWeapon* Existing : WeaponInventory)
+	if (WeaponInventory.Num() >= MaxWeaponSlots)
 	{
-		if (Existing && Existing->GetClass() == NewWeapon->GetClass())
+		if (!CurrentWeapon)
 		{
-			NewWeapon->Destroy();
 			return;
 		}
+
+		ATDSWeapon* WeaponToDrop = CurrentWeapon;
+		const int32 RemovedIndex = CurrentWeaponIndex;
+
+		CurrentWeapon = nullptr;
+		CurrentWeaponIndex = INDEX_NONE;
+		WeaponInventory.RemoveAt(RemovedIndex);
+
+		const FVector DropLocation = GetActorLocation() + GetActorForwardVector() * 120.f;
+		const FRotator DropRotation(0.f, GetActorRotation().Yaw, 0.f);
+		WeaponToDrop->DropWeapon(DropLocation, DropRotation);
 	}
 
 	NewWeapon->Holster();

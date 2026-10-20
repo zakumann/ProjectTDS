@@ -36,6 +36,15 @@ void ATDSWeapon::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (WeaponMesh)
+	{
+		WeaponMesh->SetSimulatePhysics(false);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+	
+
+	SetPickupEnabled(!bIsEquipped);
+
 	if (PickupCollision)
 	{
 		PickupCollision->OnComponentBeginOverlap.AddDynamic(this, &ATDSWeapon::OnPickupBeginOverlap);
@@ -100,25 +109,29 @@ void ATDSWeapon::Holster()
 	SetPickupEnabled(false);
 }
 
-void ATDSWeapon::DropWeapon()
+void ATDSWeapon::DropWeapon(const FVector& Location, const FRotator& Rotation)
 {
 	// Deactivate Detach
 	bIsEquipped = false;
 
 	// Separate from Character
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	SetOwner(nullptr);
+	SetInstigator(nullptr);
+
+	SetActorLocation(Location);
+	SetActorRotation(Rotation);
 
 	// Shows + Collision activate
 	SetActorHiddenInGame(false);
 	SetActorEnableCollision(true);
 
 	WeaponMesh->SetSimulatePhysics(false);			// If you want turn to true
-	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	SetInstigator(nullptr);
+	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	// Owner / Instigator to Reset
-	SetOwner(nullptr);
-	SetInstigator(nullptr);
+	SetPickupEnabled(true);
+	UpdateOverlaps(true);
 }
 
 bool ATDSWeapon::CanFire() const

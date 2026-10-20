@@ -68,7 +68,7 @@ public:
 
 	//** Drop the weapon */ 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	void DropWeapon();
+	void DropWeapon(const FVector& Location, const FRotator& Rotation);
 
 	/** Fire (if attached) */
 	UFUNCTION(BlueprintCallable, Category = "Weapon")

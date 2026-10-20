@@ -70,6 +70,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	int32 CurrentWeaponIndex = INDEX_NONE;
 
+	// Max Weapon slots
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "1"))
+	int32 MaxWeaponSlots = 2;
+
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	ATDSWeapon* GetCurrentWeapon() const { return CurrentWeapon; }
 
