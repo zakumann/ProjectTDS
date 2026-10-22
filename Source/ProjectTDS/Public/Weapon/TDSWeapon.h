@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "TDSWeaponTypes.h"
 #include "TDSWeapon.generated.h"
 
 class USkeletalMeshComponent;
@@ -83,6 +84,13 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	bool UsesLeftHandIK() const { return bUseLeftHandIK && bIsEquipped; }
+
+	// Weapon
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	EWeaponType WeaponType = EWeaponType::Pistol;
+
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	EWeaponType GetWeaponType() const { return WeaponType; }
 
 protected:
 	UFUNCTION()

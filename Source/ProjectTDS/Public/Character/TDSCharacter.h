@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
+#include "Weapon/TDSWeaponTypes.h"
 #include "TDSCharacter.generated.h"
 
 class USpringArmComponent;
@@ -79,6 +80,10 @@ public:
 
 	void SetOverlappingWeapon(ATDSWeapon* Weapon);
 	void ClearOverlappingWeapon(ATDSWeapon* Weapon);
+
+	// WeaponType
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	EWeaponType GetCurrentWeaponType() const;
 
 protected:
 	void Interact(const FInputActionValue& Value);

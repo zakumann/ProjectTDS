@@ -289,3 +289,9 @@ void ATDSCharacter::ClearOverlappingWeapon(ATDSWeapon* Weapon)
 		OverlappingWeapon = nullptr;
 	}
 }
+
+EWeaponType ATDSCharacter::GetCurrentWeaponType() const
+{
+	return (CurrentWeapon && CurrentWeapon->IsEquipped())
+		? CurrentWeapon->GetWeaponType() : EWeaponType::Unarmed;
+}
