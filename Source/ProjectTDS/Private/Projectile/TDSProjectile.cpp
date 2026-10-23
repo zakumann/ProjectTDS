@@ -48,7 +48,35 @@ ATDSProjectile::ATDSProjectile()
 void ATDSProjectile::BeginPlay()
 {
 	Super::BeginPlay();
+	LastLocation = GetActorLocation();
 	
+}
+
+void ATDSProjectile::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	const FVector CurrentLocation = GetActorLocation();
+
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ProjectileTrace), false, this);
+	Params.AddIgnoredActor(GetOwner());
+	Params.AddIgnoredActor(GetInstigator());
+
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(
+		Hit,
+		LastLocation,
+		CurrentLocation,
+		ECC_WorldStatic,
+		Params);
+
+	LastLocation = CurrentLocation;
+
+	if (bHit)
+	{
+		SetActorLocation(Hit.ImpactPoint);
+		Destroy();
+	}
 }
 
 void ATDSProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)

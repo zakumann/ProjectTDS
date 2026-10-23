@@ -92,6 +92,9 @@ void ATDSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 		EnhancedInput->BindAction(SwitchWeapon1Action, ETriggerEvent::Started, this, &ATDSCharacter::SwitchToWeapon1);
 		EnhancedInput->BindAction(SwitchWeapon2Action, ETriggerEvent::Started, this, &ATDSCharacter::SwitchToWeapon2);
 		EnhancedInput->BindAction(DropWeaponAction, ETriggerEvent::Started, this, &ATDSCharacter::DropCurrentWeapon);
+
+		// Shoot
+		EnhancedInput->BindAction(ShootAction, ETriggerEvent::Triggered, this, &ATDSCharacter::Shoot);
 	}
 }
 
@@ -132,7 +135,7 @@ void ATDSCharacter::RotateToMouseCursor()
 		FRotator NewRotation = GetActorRotation();
 		NewRotation.Yaw = LookAtRotation.Yaw;
 
-		SetActorRotation(FMath::RInterpTo(GetActorRotation(), NewRotation, GetWorld()->GetDeltaSeconds(), 15.f));
+		SetActorRotation(FMath::RInterpTo(GetActorRotation(), NewRotation, GetWorld()->GetDeltaSeconds(), 0.f));
 	}
 }
 
@@ -161,7 +164,7 @@ FVector ATDSCharacter::GetMouseCursorWorldLocation() const
 			}
 		}
 	}
-	return GetActorLocation();
+	return GetActorLocation();	// If Player Controller is not exist or out of monitor : failed calculate return to current position.
 }
 
 void ATDSCharacter::Shoot(const FInputActionValue& Value)

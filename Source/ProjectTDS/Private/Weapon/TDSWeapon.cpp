@@ -6,6 +6,9 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Character/TDSCharacter.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 
 // Sets default values
 ATDSWeapon::ATDSWeapon()
@@ -146,19 +149,75 @@ void ATDSWeapon::Fire()
 	if (!CanFire()) return; // bool -> If this is can't fire state then over.
 
 	UWorld* World = GetWorld();
-	FVector SpawnLocation = WeaponMesh->DoesSocketExist(MuzzleSocketName)
-		? WeaponMesh->GetSocketLocation(MuzzleSocketName)
-		: WeaponMesh->GetComponentLocation() + WeaponMesh->GetForwardVector() * 50.f;
-	FRotator SpawnRotation = WeaponMesh->DoesSocketExist(MuzzleSocketName)
-		? WeaponMesh->GetSocketRotation(MuzzleSocketName)
-		: WeaponMesh->GetComponentRotation();
+	if (!World || !ProjectileClass) return;
 
+	// Fire location
+	FVector MuzzleLocation = WeaponMesh->DoesSocketExist(MuzzleSocketName)
+		? WeaponMesh->GetSocketLocation(MuzzleSocketName)
+		: GetActorLocation() + GetActorForwardVector() * 50.f;
+
+	// Mouse cursor(Definite : Character)
+	FVector AimLocation = MuzzleLocation + GetActorForwardVector() * 1000.f; // Fallback
+
+	if (APawn* OwnerPawn = Cast<APawn>(GetOwner()))
+	{
+		if (APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController()))
+		{
+			FVector WorldLocation, WorldDirection;
+			if (PC->DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
+			{
+				// Character height and Plane
+				const FVector PlaneOrigin(OwnerPawn->GetActorLocation().X, OwnerPawn->GetActorLocation().Y, OwnerPawn->GetActorLocation().Z);
+				float T;
+				FVector Intersection;
+				if (UKismetMathLibrary::LinePlaneIntersection_OriginNormal(
+					WorldLocation,
+					WorldLocation + WorldDirection * 10000.f,
+					PlaneOrigin,
+					FVector::UpVector,
+					T,
+					Intersection))
+				{
+					AimLocation = Intersection;
+					AimLocation.Z = MuzzleLocation.Z; // Plane aim
+				}
+			}
+		}
+	}
+
+	APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	if (!OwnerPawn) return;
+
+	const float DistToCursor = FVector::Dist2D(OwnerPawn->GetActorLocation(), AimLocation);
+	if (DistToCursor < MinAimDistance)
+	{
+		return;
+	}
+
+	// If Cursor too close or clipping into WorldStatic
+	const FCollisionShape Sphere = FCollisionShape::MakeSphere(WallClearance);
+	if (GetWorld()->OverlapAnyTestByChannel(AimLocation, FQuat::Identity, ECC_WorldStatic, Sphere))
+	{
+		return;
+	}
+
+	// FirePoint -> Direction of Cursor
+	FVector AimDir = (AimLocation - MuzzleLocation).GetSafeNormal();
+	if (AimDir.IsNearlyZero())
+	{
+		AimDir = GetActorForwardVector();
+	}
+
+	const FRotator SpawnRotation = AimDir.Rotation();
+
+	// Spawn Projectile.
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = GetOwner();
 	SpawnParams.Instigator = GetInstigator();
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	if (World->SpawnActor<AActor>(ProjectileClass, SpawnLocation, SpawnRotation, SpawnParams))
+	AActor* Projectile = World->SpawnActor<AActor>(ProjectileClass, MuzzleLocation, SpawnRotation, SpawnParams);
+	if (Projectile)
 	{
 		NextFireTime = World->GetTimeSeconds() + (1.f / FMath::Max(FireRate, 0.01f));
 	}

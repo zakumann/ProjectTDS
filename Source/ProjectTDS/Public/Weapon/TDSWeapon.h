@@ -59,6 +59,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Combat")
 	float ProjectileSpeed = 3000.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Combat")
+	float MinAimDistance = 120.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Combat")
+	float WallClearance = 40.f;
+
 	// ==== Functions ====
 	/** Attach Weapon into Character's hand */
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
