@@ -17,6 +17,11 @@ ATDSProjectile::ATDSProjectile()
 
 	CollisionComp = CreateDefaultSubobject<USphereComponent>("CollisionComp");
 	CollisionComp->InitSphereRadius(6.f);
+	// When Projectile Hit something-> On Hit!
+	CollisionComp->OnComponentHit.AddDynamic(this, &ATDSProjectile::OnHit);
+	// Set Collision and physics
+	CollisionComp->SetCollisionProfileName("Projectile");
+	CollisionComp->SetGenerateOverlapEvents(true);
 
 	SetRootComponent(CollisionComp);
 
@@ -57,7 +62,7 @@ void ATDSProjectile::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	const FVector CurrentLocation = GetActorLocation();
-
+	// Blocking Clipping situation when Projectile fire due to too high speed.
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ProjectileTrace), false, this);
 	Params.AddIgnoredActor(GetOwner());
@@ -72,10 +77,9 @@ void ATDSProjectile::Tick(float DeltaTime)
 
 	LastLocation = CurrentLocation;
 
-	if (bHit)
+	if (bHit && Hit.GetActor())
 	{
-		SetActorLocation(Hit.ImpactPoint);
-		Destroy();
+		OnHit(CollisionComp, Hit.GetActor(), Hit.GetComponent(), FVector::ZeroVector, Hit);
 	}
 }
 
@@ -83,12 +87,10 @@ void ATDSProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPr
 {
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner() || OtherActor == GetInstigator()) // ! If not valid OtherActor or Otheractor is mine or if another is owner is mine or OtherActor is Instigator..
 	{
-		Destroy();
 		return;
 	}
 
 	AActor* Shooter = GetInstigator() ? static_cast<AActor*>(GetInstigator()) : GetOwner();
-
 	bool bShouldDamage = false;
 
 	// Player to Enemies

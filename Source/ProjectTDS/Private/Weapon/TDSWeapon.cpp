@@ -32,13 +32,15 @@ ATDSWeapon::ATDSWeapon()
 
 	MuzzleSocketName = TEXT("Muzzle_Socket");
 	CharacterGripSocketName = TEXT("Pistol_Grip_socket");
+	LeftHandSocketName = TEXT("LeftHandSocket");
+	bUseLeftHandIK = true;
 }
 
 // Called when the game starts or when spawned
 void ATDSWeapon::BeginPlay()
 {
 	Super::BeginPlay();
-
+	// Check Collision state when start this.
 	if (WeaponMesh)
 	{
 		WeaponMesh->SetSimulatePhysics(false);
@@ -78,7 +80,7 @@ void ATDSWeapon::EquipWeapon(ACharacter* TargetCharacter)
 	SetOwner(TargetCharacter); // Who Owning it.
 	SetInstigator(TargetCharacter); // Who did it 
 	bIsEquipped = true;
-
+	// Check state and deactivate pick up
 	SetActorHiddenInGame(false);
 	SetActorEnableCollision(true);
 
@@ -105,7 +107,7 @@ void ATDSWeapon::EquipWeapon(ACharacter* TargetCharacter)
 void ATDSWeapon::Holster()
 {
 	bIsEquipped = false;
-
+	// Separte from Character and hidden it.
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	SetActorHiddenInGame(true);
 	SetActorEnableCollision(false);
@@ -139,6 +141,7 @@ void ATDSWeapon::DropWeapon(const FVector& Location, const FRotator& Rotation)
 
 bool ATDSWeapon::CanFire() const
 {
+	// 1. Equip state 2. Projectile Class 3. Next fire cooltime.
 	return bIsEquipped &&
 		ProjectileClass &&
 		GetWorld()->GetTimeSeconds() >= NextFireTime;
@@ -151,6 +154,9 @@ void ATDSWeapon::Fire()
 	UWorld* World = GetWorld();
 	if (!World || !ProjectileClass) return;
 
+	APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	if (!OwnerPawn) return;
+
 	// Fire location
 	FVector MuzzleLocation = WeaponMesh->DoesSocketExist(MuzzleSocketName)
 		? WeaponMesh->GetSocketLocation(MuzzleSocketName)
@@ -159,48 +165,52 @@ void ATDSWeapon::Fire()
 	// Mouse cursor(Definite : Character)
 	FVector AimLocation = MuzzleLocation + GetActorForwardVector() * 1000.f; // Fallback
 
-	if (APawn* OwnerPawn = Cast<APawn>(GetOwner()))
+	if (APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController()))
 	{
-		if (APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController()))
+		FVector WorldLocation, WorldDirection;
+		if (PC->DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
 		{
-			FVector WorldLocation, WorldDirection;
-			if (PC->DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
+			// Character height and Plane
+			const FVector PlaneOrigin(OwnerPawn->GetActorLocation().X, OwnerPawn->GetActorLocation().Y, OwnerPawn->GetActorLocation().Z);
+			float T;
+			FVector Intersection;
+			if (UKismetMathLibrary::LinePlaneIntersection_OriginNormal(
+				WorldLocation,
+				WorldLocation + WorldDirection * 10000.f,
+				PlaneOrigin,
+				FVector::UpVector,
+				T,
+				Intersection))
 			{
-				// Character height and Plane
-				const FVector PlaneOrigin(OwnerPawn->GetActorLocation().X, OwnerPawn->GetActorLocation().Y, OwnerPawn->GetActorLocation().Z);
-				float T;
-				FVector Intersection;
-				if (UKismetMathLibrary::LinePlaneIntersection_OriginNormal(
-					WorldLocation,
-					WorldLocation + WorldDirection * 10000.f,
-					PlaneOrigin,
-					FVector::UpVector,
-					T,
-					Intersection))
-				{
-					AimLocation = Intersection;
-					AimLocation.Z = MuzzleLocation.Z; // Plane aim
-				}
+				AimLocation = Intersection;
+				AimLocation.Z = MuzzleLocation.Z; // Plane aim
 			}
 		}
 	}
 
-	APawn* OwnerPawn = Cast<APawn>(GetOwner());
-	if (!OwnerPawn) return;
-
-	const float DistToCursor = FVector::Dist2D(OwnerPawn->GetActorLocation(), AimLocation);
-	if (DistToCursor < MinAimDistance)
+	if (FVector::Dist2D(OwnerPawn->GetActorLocation(), AimLocation) < MinAimDistance)
 	{
 		return;
 	}
 
-	// If Cursor too close or clipping into WorldStatic
-	const FCollisionShape Sphere = FCollisionShape::MakeSphere(WallClearance);
-	if (GetWorld()->OverlapAnyTestByChannel(AimLocation, FQuat::Identity, ECC_WorldStatic, Sphere))
+	if (World->OverlapAnyTestByChannel(
+		AimLocation,
+		FQuat::Identity,
+		ECC_WorldStatic,
+		FCollisionShape::MakeSphere(WallClearance)))
 	{
 		return;
 	}
+	// Check obstacle from gun fire location.
+	FHitResult WallHit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(FireAimTrace), false, this);
+	Params.AddIgnoredActor(GetOwner());
+	Params.AddIgnoredActor(GetInstigator());
 
+	if (World->LineTraceSingleByChannel(WallHit, MuzzleLocation, AimLocation, ECC_WorldStatic, Params))
+	{
+		return;
+	}
 	// FirePoint -> Direction of Cursor
 	FVector AimDir = (AimLocation - MuzzleLocation).GetSafeNormal();
 	if (AimDir.IsNearlyZero())
