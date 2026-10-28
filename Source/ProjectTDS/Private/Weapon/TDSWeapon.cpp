@@ -193,21 +193,42 @@ void ATDSWeapon::Fire()
 		return;
 	}
 
-	if (World->OverlapAnyTestByChannel(
-		AimLocation,
-		FQuat::Identity,
-		ECC_WorldStatic,
-		FCollisionShape::MakeSphere(WallClearance)))
-	{
-		return;
-	}
-	// Check obstacle from gun fire location.
-	FHitResult WallHit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(FireAimTrace), false, this);
+	Params.AddIgnoredActor(this);
 	Params.AddIgnoredActor(GetOwner());
 	Params.AddIgnoredActor(GetInstigator());
 
-	if (World->LineTraceSingleByChannel(WallHit, MuzzleLocation, AimLocation, ECC_WorldStatic, Params))
+	bool bBlockedByWall = false;
+	FVector TraceStart = MuzzleLocation;
+	const FVector TraceEnd = AimLocation;
+
+	for (int32 i = 0; i < 8; ++i)
+	{
+		FHitResult Hit;
+		const bool bHit = GetWorld()->LineTraceSingleByChannel(
+			Hit, TraceStart, TraceEnd, ECC_Visibility, Params);
+
+		if (!bHit)
+		{
+			break;
+		}
+
+		AActor* HitActor = Hit.GetActor();
+		const bool bIsCharacter = HitActor &&
+			(HitActor->ActorHasTag(TEXT("Enemy")) || HitActor->ActorHasTag(TEXT("Player")));
+
+		if (bIsCharacter)
+		{
+			Params.AddIgnoredActor(HitActor);
+			TraceStart = Hit.ImpactPoint + (TraceEnd - TraceStart).GetSafeNormal() * 2.f;
+			continue;
+		}
+
+		bBlockedByWall = true;
+		break;
+	}
+
+	if (bBlockedByWall)
 	{
 		return;
 	}
