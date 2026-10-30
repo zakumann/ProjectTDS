@@ -62,62 +62,55 @@ void ATDSProjectile::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	const FVector CurrentLocation = GetActorLocation();
+	if (LastLocation.Equals(CurrentLocation, 0.1f))
+	{
+		return;
+	}
+
 	// Blocking Clipping situation when Projectile fire due to too high speed.
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ProjectileTrace), false, this);
+	Params.AddIgnoredActor(this);
 	Params.AddIgnoredActor(GetOwner());
 	Params.AddIgnoredActor(GetInstigator());
 
-	const bool bHit = GetWorld()->LineTraceSingleByChannel(
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	Objects.AddObjectTypesToQuery(ECC_Pawn);
+
+	const bool bHit = GetWorld()->LineTraceSingleByObjectType(
 		Hit,
 		LastLocation,
 		CurrentLocation,
-		ECC_WorldStatic,
+		Objects,
 		Params);
 
-	LastLocation = CurrentLocation;
-
-	if (bHit && Hit.GetActor())
+	if (bHit)
 	{
+		SetActorLocation(Hit.ImpactPoint);
 		OnHit(CollisionComp, Hit.GetActor(), Hit.GetComponent(), FVector::ZeroVector, Hit);
+		return;
 	}
+
+	LastLocation = CurrentLocation;
 }
 
 void ATDSProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner() || OtherActor == GetInstigator()) // ! If not valid OtherActor or Otheractor is mine or if another is owner is mine or OtherActor is Instigator..
 	{
+		Destroy();
 		return;
 	}
 
 	AActor* Shooter = GetInstigator() ? static_cast<AActor*>(GetInstigator()) : GetOwner();
-	bool bShouldDamage = false;
+	const bool bPlayerShot = Shooter && Shooter->ActorHasTag(FName("Player"));
+	const bool bEnemyShot = Shooter && Shooter->ActorHasTag(FName("Enemy"));
 
-	// Player to Enemies
-	if (Shooter && Shooter->ActorHasTag(FName("Player")))
+	if ((bPlayerShot && OtherActor->ActorHasTag(FName("Enemy"))) || (bEnemyShot && OtherActor->ActorHasTag(FName("Player"))))
 	{
-		if (OtherActor->ActorHasTag(FName("Enemy"))) // If OtherActor Tag is Enemy
-		{
-			bShouldDamage = true; // Give damage to Enemy success
-		}
-	}
-	else if (Shooter && Shooter->ActorHasTag(FName("Enemy")))
-	{
-		if (OtherActor->ActorHasTag(FName("Player")))
-		{
-			bShouldDamage = true;
-		}
-	}
-
-	if (bShouldDamage)
-	{
-		UGameplayStatics::ApplyDamage(
-			OtherActor,
-			Damage,
-			GetInstigatorController(),
-			this,
-			UDamageType::StaticClass()
-		);
+		UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 	}
 
 	Destroy();
